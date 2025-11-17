@@ -26,7 +26,7 @@ app.use(express.json());
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-app.post("/upload", upload.array("images", 15), async (req, res) => {
+app.post("/api/upload", upload.array("images", 15), async (req, res) => {
   if (!req.files || req.files.length === 0)
     return res.status(400).json({ error: "No se subieron imágenes" });
 
