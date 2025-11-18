@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: ["http://localhost:5173", "https://frontorc.vercel.app/"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -24,45 +24,44 @@ app.use(
 app.use(express.json());
 // Configurar multer
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
+// const upload = multer({ storage });
+const upload = multer({
+  limits: { fileSize: 10 * 1024 * 1024, files: 70 }, // 10MB por archivo, 70 archivos
+});
 
-app.post("/api/upload", upload.array("images", 15), async (req, res) => {
+app.post("/api/upload", upload.array("images", 70), async (req, res) => {
   if (!req.files || req.files.length === 0)
     return res.status(400).json({ error: "No se subieron imágenes" });
 
   try {
-    const resultados = [];
+    // Procesar todas las imágenes en paralelo con Promise.all
+    const resultados = await Promise.all(
+      req.files.map(async (file, i) => {
+        console.log(`Procesando archivo ${i + 1}: ${file.originalname}`);
 
-    for (let i = 0; i < req.files.length; i++) {
-      const file = req.files[i];
-      // console.log(`Procesando archivo ${i + 1}: ${file.originalname}`);
+        // Crear worker para cada imagen
+        const worker = await createWorker("spa", 1);
+        const { data } = await worker.recognize(file.buffer);
+        await worker.terminate(); // Terminar worker después de usar
 
-      // 🔹 Worker correcto en Tesseract v5.1
-      const worker = await createWorker("spa", 1);
+        // Extraer total del texto
+        const lineas = data.text.split("\n").map((l) => l.trim());
+        let total = null;
+        const regex = /\d+(?:\.\d+)?/g;
 
-      // 🔹 Reconocer texto directamente
-      const { data } = await worker.recognize(file.buffer);
-
-      await worker.terminate();
-
-      const lineas = data.text.split("\n").map((l) => l.trim());
-      let total = null;
-
-      const regex = /\d+(?:\.\d+)?/g;
-
-      // Buscar total
-      for (const linea of lineas) {
-        if (/total/i.test(linea)) {
-          const nums = linea.match(regex);
-          if (nums) total = parseFloat(nums.pop());
+        for (const linea of lineas) {
+          if (/total/i.test(linea)) {
+            const nums = linea.match(regex);
+            if (nums) total = parseFloat(nums.pop());
+          }
         }
-      }
 
-      resultados.push({
-        archivo: file.originalname,
-        total,
-      });
-    }
+        return {
+          archivo: file.originalname,
+          total,
+        };
+      })
+    );
 
     console.log("Totales extraídos:", resultados);
     res.json(resultados);
