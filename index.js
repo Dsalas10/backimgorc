@@ -12,8 +12,9 @@ const PORT = process.env.PORT || 3000;
 
 // --- CONFIGURAR CORS ---
 const allowedOrigins = [
-  process.env.FRONTEND_URL_LOCAL, 
-  process.env.FRONTEND_URL_PROD, 
+  process.env.FRONTEND_URL_LOCAL,
+  process.env.FRONTEND_URL_PROD,
+   "http://localhost:5173", 
 ];
 
 app.use(
@@ -34,10 +35,15 @@ const upload = multer({
 });
 
 // --- CONFIGURAR GOOGLE VISION CLIENT ---
+console.log("GOOGLE_CREDENTIALS definida:", !!process.env.GOOGLE_CREDENTIALS);
 if (process.env.GOOGLE_CREDENTIALS) {
   fs.writeFileSync("/tmp/vision-key.json", process.env.GOOGLE_CREDENTIALS);
+  console.log("Credenciales cargadas en /tmp/vision-key.json");
+} else {
+  console.error(
+    "GOOGLE_CREDENTIALS no definida. Revisa configuración en Render."
+  );
 }
-
 const client = new vision.ImageAnnotatorClient({
   keyFilename: process.env.GOOGLE_CREDENTIALS
     ? "/tmp/vision-key.json"
@@ -52,33 +58,32 @@ app.post("/api/upload", upload.array("images", 70), async (req, res) => {
   try {
     const resultados = await Promise.all(
       req.files.map(async (file) => {
-          const [result] = await client.textDetection({
-            image: { content: file.buffer },
-          });
+        const [result] = await client.textDetection({
+          image: { content: file.buffer },
+        });
 
-          const text = result.fullTextAnnotation
-            ? result.fullTextAnnotation.text
-            : "";
+        const text = result.fullTextAnnotation
+          ? result.fullTextAnnotation.text
+          : "";
 
-          // --- EXTRAER TOTAL ---
-          const totalRegex =
-            /Total[\s:]*([\s\S]{0,20}?)([0-9O]+(?:\.[0-9O]+)?)\s*bs/i;
-          let total = null;
-          const matchTotal = text.match(totalRegex);
-          if (matchTotal) {
-            let numberText = matchTotal[2]
-              .replace(/O/gi, "0")
-              .replace(/[^0-9.]/g, "");
-            if (numberText.length > 0) total = Number(numberText);
-          }
+        // --- EXTRAER TOTAL ---
+        const totalRegex =
+          /Total[\s:]*([\s\S]{0,20}?)([0-9O]+(?:\.[0-9O]+)?)\s*bs/i;
+        let total = null;
+        const matchTotal = text.match(totalRegex);
+        if (matchTotal) {
+          let numberText = matchTotal[2]
+            .replace(/O/gi, "0")
+            .replace(/[^0-9.]/g, "");
+          if (numberText.length > 0) total = Number(numberText);
+        }
 
-          // --- EXTRAER HORA ---
-          const horaRegex = /\b([01]?[0-9]|2[0-3]):[0-5][0-9]\b/;
-          const matchHora = text.match(horaRegex);
-          const hora = matchHora ? matchHora[0] : "No detectada";
+        // --- EXTRAER HORA ---
+        const horaRegex = /\b([01]?[0-9]|2[0-3]):[0-5][0-9]\b/;
+        const matchHora = text.match(horaRegex);
+        const hora = matchHora ? matchHora[0] : "No detectada";
 
-          return { archivo: file.originalname, total, hora };
-    
+        return { archivo: file.originalname, total, hora };
       })
     );
 
@@ -130,12 +135,10 @@ app.post("/api/upload", upload.array("images", 70), async (req, res) => {
     res.json(resultadosOrdenados);
   } catch (error) {
     console.error("Error general al procesar imágenes:", error.message);
-    res
-      .status(500)
-      .json({
-        error: "Error general al procesar imágenes",
-        detalle: error.message,
-      });
+    res.status(500).json({
+      error: "Error general al procesar imágenes",
+      detalle: error.message,
+    });
   }
 });
 
@@ -144,6 +147,7 @@ app.use("/api/eventos", eventoRoute);
 
 // --- INICIAR SERVIDOR ---
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT} en todas las interfaces`);
+  console.log(
+    `Servidor escuchando en el puerto ${PORT} en todas las interfaces`
+  );
 });
-
